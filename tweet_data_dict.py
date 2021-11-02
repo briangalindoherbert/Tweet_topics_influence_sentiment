@@ -16,14 +16,31 @@ ADDITIONAL SUB-DIRECTORIES OFF GSTWEET FOR THIS PROJECT:
 /models/ - pretrained or pre-labeled data for word2vec or nltk models, such as large
     vocabulary files with vector embeddings or tweets or phrases with sentiment labels
 """
-MODELDIR = '/Users/bgh/dev/pydev/gsTweet/models/'
-TWEETSDIR = '/Users/bgh/dev/pydev/gsTweet/twitter/'
-GMEDIR = '/Users/bgh/dev/pydev/gsTweet/twitter/gamestop/'
+MODELDIR = '/Users/bgh/dev/pydev/superleague/models/'
+TWEETSDIR = '/Users/bgh/dev/pydev/superleague/twitter/'
 ESLDIR = '/Users/bgh/dev/pydev/superleague/twitter/superleague/'
-OUTDIR = '/Users/bgh/dev/pydev/gsTweet/output/'
+METADIR = '/Users/bgh/dev/pydev/superleague/twitter/facebook_meta/'
+META_OUT = '/Users/bgh/dev/pydev/superleague/output/facebook_meta'
+OUTDIR = '/Users/bgh/dev/pydev/superleague/output/'
 
-W2VEC_PRE = '/Users/bgh/dev/pydev/gsTweet/models/freebase-vectors-skipgram1000-en.bin'
-TW2VEC_PRE = '/Users/bgh/dev/pydev/gsTweet/models/word2vec_twitter_tokens.bin'
+class PRNF:
+    """
+    Class PRNF (PRiNt Formatting) makes it easy to embed escape-type formatting commands
+    in a python print statement.  to print bold: print("PRNF.BOLD  blah-blah  PRNF.END")
+    """
+    PURPLE = "\033[95m"
+    CYAN = "\033[96m"
+    DARKCYAN = "\033[36m"
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+    END = "\033[0m"
+
+W2VEC_PRE = '/Users/bgh/dev/pydev/superleague/models/freebase-vectors-skipgram1000-en.bin'
+TW2VEC_PRE = '/Users/bgh/dev/pydev/superleague/models/word2vec_twitter_tokens.bin'
 
 GS_ABSOLUTE = ["always", "horrible", "never", "perfect", "worthless", "useless",
              "infinitely", "absolutely", "completely", "totally", "exponentially",
@@ -33,36 +50,44 @@ GS_EXTREME = ["insane", "evil", "psycho", "idiot", "rube", "crazy", "neurotic", 
 GS_BALANCE = ["relative", "preferable", "optimal", "better", "inferior", "superior"]
 
 # these are standard Adverb and Pronoun STOPS on many nlp projects
-GS_ADVB = ["am", "are", "do", "does", "doing", "did", "is", "was", "were"]
+GS_ADVB = ["am", "are", "as", "be", "been", "being", "do", "does", "doing", "did",
+           "have", "has", "had", "having", "is", "until", "was", "were"]
 GS_PPRON = ["we", "he", "her", "him", "me", "she", "them", "us", "they"]
 
 # Words to Remove: standard plus stops based on project type, context, or tfidf analysis
 STOPS_ESL = ["team", "club", "clubs", "UEFA", "ESL", "UEFA", "game", 'superlega',
-            "english", "arsenal", "barcelona", "chelsea", "juventus", "liverpool",
-            "mancity", "manutd", "MUFC", "madeid", "real madrid", "sheffield", "shiffeld",
-            'spurs', 'tottenham', 'european', '\u2066kevinhunterday\u2069', 'david_ornstein',
-            '\u2066kieranmaguire\u2069', '\u2066\u2066mjshrimper\u2069', 'markslearnenglish',
-            "europesuperleague", 'europeansuperleague', "league", "'pundit", 'football',
-            'minutes', 'TV', "news", 'sport_en', 'spacetravel', 'leemarkjudges', '08069830203',
-            '2PACMUFC', 'phil__howarth', 'john_nufc', 'sheshe_tom', 'russell_vine', '1reddevil2',
-            "united", 'super', 'league', 'florentino', 'superleague', "days", '[at', '2021]',
-            'mikel', 'tourtalk', 'PGA', '⛳️', 'golf', 'pgatour', "week", "today", "year",
-            "legacyfan"]
+             "english", "arsenal", "barcelona", "chelsea", "juventus", "liverpool",
+             "mancity", "manutd", "MUFC", "madeid", "real madrid", 'tottenham',
+             "sheffield", "shiffeld", 'spurs', "united", "esl", "tesol",
+             'lfc', 'mufc', 'mcfc', 'cfc', 'thfc',
+             'european', 'superleague', 'football', 'florentino',
+             'super', 'league', "days", "week", "today", "year",
+             "europesuperleague", 'europeansuperleague', "league", "'pundit",
+             'sport_en', 'spacetravel', 'leemarkjudges', '08069830203', '2PACMUFC',
+             'phil__howarth', 'john_nufc', 'sheshe_tom', 'russell_vine', '[at', '2021]',
+             '\u2066\u2066mjshrimper\u2069', '\u2066kieranmaguire\u2069', 'mikel',
+             'tourtalk', 'PGA', '⛳️', 'golf', 'pgatour', 'markslearnenglish',
+             "legacyfan", '1reddevil2', '\u2066kevinhunterday\u2069', 'david_ornstein',
+             "learning", "content", "efl", "learn", "english", "tesol", "tefl",
+             "onlinelearning", "language", "speakenglish", "learnenglish", "lesson",
+             "plan", "tefl", "grammar", "englishonline", "speakenglish", "vocabulary",
+             "ELT", "reading", "education", "practice", "conference", "remote",
+             "classroom", "students"]
 
-STOP_UTF2 = ['🌙', '🍭', '😋', '🌶', ]
-
-GS_STOP = ["a", "about", "all", "almost", "also", "among", "am", "an", "and","already",
+GS_STOP = ["RT", "a", "about", "all", "almost", "also", "among", "am", "an", "and","already",
            "any", "are", "as", "at", "back", "because", "but", "by", "cause", "come",
-           "could", "did", "does", "either", "else", "ever", "even", "for",
-           "from", "going", "has", "had", "have", "his", "her", "hers", "how",
-           "however", "if", "I", "in", "into", "is", "it", "its", "just", "least",
+           "could", "did", "dont", "does", "either", "else", "ever", "even", "for", "like",
+           "from", "go", "going", "has", "had", "have", "his", "her", "hers", "how", "not",
+           "however", "if", "I", "in", "into", "is", "it", "its", "just", "least", "who",
            "let", "lets", "likely", "may", "me", "might", "must", "much", "my", "need",
-           "now", "of", "often", "on", "only", "or", "other", "our", "own", "rather",
-           "really", "same", "seems", "shall", "show", "should", "since", "so", "some",
+           "no", "now", "of", "often", "on", "one", "only", "or", "other", "our", "own", "rather",
+           "part", "really", "same", "seems", "shall", "show", "should", "since", "so", "some",
            "something", 'still', 'such', "than", "that", "the", "their", "them", "then",
            "there", "these", "they", "think", "this", "those", "thus", "to", "too",
-           "was", "watch", "well", "were", "what", "while", "will", "would", "whom",
-           "with", "yet", "your", "rt", "we", "what"]
+           "was", "watch", "well", "were", "what", "while", "who", "will", "would", "whom",
+           "with", "yet", "your", "rt", "we", "what", "been", "more", "when", "big", "after"
+           "he", "man", "us", "off", "les", "des", "et", "il", "en", "before", "di",
+           "us", "very", "you"]
 
 STOP_ADD = ['_', '(', ')', '…', '[', ']', '_', '__', ':', '"', '️', ':', '"', '/', ']',
             '201920', '20212022', '235', '244', '247', '28t', '6', '651m', '7.406', '️',
@@ -79,7 +104,7 @@ STOP_ADD = ['_', '(', ')', '…', '[', ']', '_', '__', ':', '"', '️', ':', '"'
             'here', 'hey', 'hows', 'hyphen', 'i', 'id', 'ielts', 'ill', 'ings',
             'ins', 'instead', 'ipad', 'iphone', 'ipod', 'ive', 'j', 'ju', 'keeping',
             'l', 'la', 'lea', 'lev', 'literally', 'lot', 'm',
-            'mark', 'marks', 'mars', 'matter', "'the",
+            'mark', 'marks', 'mars', 'matter', "'the", 'minutes', 'TV', "news",
             'maybe', 'micr', 'middleweigh', 'mobile', 'most', 'mr', 'n', 'name',
             'nasa', 'nearly', 'nevertheless', 'notes', 'o', 'oa', 'orbn', 'orry',
             'p', 'per', 'play', 'possibly', 'potentially', 'pu', 'punctuation',
@@ -92,7 +117,7 @@ STOP_ADD = ['_', '(', ')', '…', '[', ']', '_', '__', ':', '"', '️', ':', '"'
             'whether', 'which', 'whoever', 'writes', 'x', 'y', 'ya', 'ye',
             'yep', 'yer', 'youd']
 
-STOP_TWEET = ['RT', "says", "take", "know", "every", "time", "people", "want", "wants",
+STOP_TWEET = ["says", "take", "know", "every", "time", "people", "want", "wants",
              'approximately', 'typifies', 'continuously', "many", "every", "happen",
              'GTTO', 'describes', 'remembering', 'reconsidering', 'developp',
              'phantasy_foods', "point", "artistrtweeters", "gnev",
@@ -244,18 +269,45 @@ STOP_NONALPHA: list = [':', '!', '?', '…', '"', '😂', '️', '🤣', '🚨',
                        '_16',
                        '123tupac', '371', 'rio_f', '79', '8e', ':d', '59', '52', '46', '']
 
+STOP_NONALPHA2: list = ['100k', 'rojos_municipal', 'fcstpauli_en', 'اراضي_شرق_الرياض', 'مرزوقه_الحربي',
+'هند_القحطاني_تعود_للحجاب', 'تانج_والا_فيمتو', 'جده_Iلان', 'الدمام_الان', '05552230', 'عماله_منزليه',
+'الفلبين_سيرلانكا_بنقلاديشيه_كينيا_اثيوبيا_اغندا', '1950', 'k24tv', '0704', '217', '192', '365scores',
+'🍓', '36th', 'matt_law_dt', '🙂', 'the_gfp', '؟', 'ريال_مدريد', 'انتر_نابولي', 'مانشستر_يونايتد',
+'donny_beek', 'manutd_es', '2nd', 'slc_live', 'bruce_levell', '700m', 'you_make_me_day', '50million',
+'⚡', '️boris', 'mikekeegan_dm', '40m', 'kevin_blundell', '🐍', '⏩', '3bill', 'andrew_vas', '777',
+'sam_inkersoletm', 'tim_ecksteen', '⚧', '1972', '_8', '9fowler', 'ian_rush', '2/3', '_10', '935GP',
+'08131271', '06', '09082000056', '1kroenkeout', '2008', '2013', 'seriea_en', 'adelaide_rams', '1000s',
+'🧐', '4TAG', '75', '52', 'phil_wellbrook', 'kmtv_kent', 'uefacom_it', '34million', 'جريمه_صباح_السالم',
+'1348 7610', 'laura_woodsy', '50000', 'gunner_x', '1892 2021', 'PL2', '░', '⇢', '▉', 'vintage_utd',
+'weare_theshed', '3/3', '200k', '🥵', '🤍', '304', '📣', 'alison_mcgovern', '5bn', '7bn', '️seguimentfcb',
+'000', '🍻', '25', '⌚', '5parks', '1088', '5️⃣0️⃣', '😥', '10000', '1m', '🕺', '🥂', '🍾', '🎂',
+'🎊', '🌹', '🎁', '5live', '🏃', '💹', 'GW32', '1980', '4yo', '8th', '1889/90', '🦈', '4H',
+'1kminute', '🐦', '121200', '🤙', '613 750 1200', '1200', '26', 'vi_nl', '0526', '1965wendy',
+'lola_united', '111', '160', '1961', 'john_nufc', '42', '74', '_16', '2manutd',
+'123tupac', '371', 'rio_f', '79', 'D:', '22:30', '4b', '🪐', '🌑', 'you_make_me',
+'🛑', '️unitedcity', '5⃣', '167', '6amclub', ':p', '🐺', '033u', '16h', '12promax',
+'12pro', '12mini', '300m', '🧵', '1/14', '2020s', 'flohempel_darts', '00n', 'lawson_sv',
+'07118081', '6500', '2348161148', '090', 'inger_stitche', '5K', '534K', '278K', 'matt_santangelo',
+'bd29b1', '2day', 'kzs_si', 'nzs_si', 'u20', '🍑', '___', '╭', '╮', '▏', '▕', '┏', '┳', '┓', '┻',
+'1510', '1280', '528', '272', '125', '630', '458', '152', '1173', '901', '494', '7723', '🔲', 'tk_cele',
+'samurai_ando', 'shush_larawk', 'curtis_peprah', 'siya_phungula', '_7220000', '7220000',
+'lfcdt_gav', '\U000e0063', '\U000e0074', '2bn', '6bn', 'rp3', '5b', '92a', 'slbenfica_en',
+'4k', '7k', 'sportrecht_dus', 'mark_e_orth']
+
+STOP_UTF2: list = ['🌙', '🍭', '😋', '🌶', ]
+
 # bracket special chars for RE compares. RE and python compare (if x in Y) different
-JUNC_PUNC = "[*+%;',]"
-XTRA_PUNC = "([.!?]+)"
-END_PUNC = "[.!?]"      # keep ! and ?, they both have effect on tweet sentiment
-PUNC_STR = ["*", "+", "%", ":", ";", "/", "|", ",", "'"]
+JUNC_PUNC: str = "[*+%;',]"
+XTRA_PUNC: str = "([.!?]+)"
+END_PUNC: str = "[.!?]"      # keep ! and ?, they both have effect on tweet sentiment
+PUNC_STR: list = ["*", "+", "%", ":", ";", "/", "|", ",", "'"]
 GS_SENT_END: list = ["!", "?", ";", ".", "..", "..."]
 
 # capture special Tweet text: user_mention, hashtag, urls, stuff inside paras, punctuation
 GS_PAREN = "\((.+?)\)"
 GS_URL = r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b'\
          r'[-a-zA-Z0-9()@:%_\+.~#?&//=]*'
-GS_MENT = "@(\w*)"                      # find user mentions as in '@UserName'
+GS_MENT = "@(\w*)"
 GS_HASH = "[#](\w*)"
 GS_UCS4 = r"\\\\[x][0-9,a-f]{4}"        # find ucs-2 aka double-byte characters
 GS_UCS = "\\u[0-9,a-f]{4}"
@@ -263,7 +315,7 @@ UCS_SYM = "\\[u][0,2]{2}[0-9,a-f]{2}"
 
 # contractions expansions, includes forms with missing apostrophe
 GS_CONTRACT = {
-    "-":" ",
+    "-": " ",
     "ain't": "aint",
     "aren't": "are not",
     "arent": "are not",
@@ -491,6 +543,35 @@ emoji_dict: dict = {
 IDIOM_MODS = {'darth vader': -2.5, 'male privilege': -2.5, "good guys": 0.5}
 VADER_MODS = {"amf":-2.0, "sociopathic": -2.5, "cartel": -1.0, "ideologues": -0.5,
              "blunder": -0.5, "commodotize": -0.5}
+
+TRACE_COLRS = ["rgb(255, 153, 51)", "rgb(204, 204, 102)", "rgb(0, 153, 0)",
+               "rgb(0, 153, 255)", "rgb(153, 102, 0)", "rgb(0, 102, 153)",
+               "rgb(255, 51, 153)", "rgb( 255, 102, 204)", "rgb(51, 51, 51)",
+               "rgb(102, 0, 153)", "rgb(0, 102, 153)", "rgb(51, 102, 153)",
+               "rgb(0, 102, 0)", "rgb(204, 102, 51)", "rgb(153, 153, 153)"]
+
+GSC = {
+    "dkblu": "rgb(0, 102, 153)",
+    "ltblu": "rgb(0, 153, 255)",
+    "grn": "rgb(0, 204, 102)",
+    "oblk": "rgb(51, 51, 51)",
+    "prpl": "rgb(51, 51, 153)",
+    "dkgrn": "rgb(51, 102, 51)",
+    "dkryl": "rgb(51, 102, 153)",
+    "brwn": "rgb( 102, 51, 51)",
+    "drkrd": "rgb(153, 51, 102)",
+    "brnz": "rgb(153, 102, 0)",
+    "gray": "rgb(153, 153, 153)",
+    "brnorg": "rgb(153, 102, 51)",
+    "lgrn": "rgb(153, 153, 51)",
+    "slvr": "rgb(153, 153, 153)",
+    "org": "rgb(204, 102, 51)",
+    "gld": "rgb(204, 153, 51)",
+    "olv": "rgb(204, 204, 102)",
+    "beig": "rgb(204, 204, 153)",
+    "ltgry": "rgb(204, 204, 204)",
+    "mgnta": "rgb(255, 51, 255)"
+}
 
 """
 	eyes = "[8:=;]"

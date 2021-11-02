@@ -14,8 +14,9 @@ augmented frequency, count of target divided by count of top occurring word in d
 
 import math
 from collections import OrderedDict
+import pandas as pd
 
-def calc_tf(sentlst, word_tokens: bool=False, calctyp: str="UNIQ", debug: bool=False):
+def calc_tf(sentlst, word_tokens: bool = False, calctyp: str = "UNIQ"):
     """
     tf = occurrences of word to other words in each tweet.
     term frequency can be: word occurrences/unique words, occurrences/total word count,
@@ -24,12 +25,40 @@ def calc_tf(sentlst, word_tokens: bool=False, calctyp: str="UNIQ", debug: bool=F
     :param word_tokens: is sentlist for tweets word-tokenized?
     :param calctyp: options: target vs count UNIQ words, target count vs TOP word count,
     target count vs total COUNT of words  - in all cases a 'doc'= a tweet
-    :param debug: boolean if True prints status messages
     :return: dict of key=target word, val=frequency based on calctyp
     """
+
+    def get_top_tf(tmp: list):
+        """
+        at end of processing, find and display the top 10 words by tf in the dataset
+        :param tmp: list of dict from tf_table
+        :return: None
+        """
+        tops: dict = {}
+        for x in tmp:
+            if isinstance(x, dict):
+                for wrd, tf in x.items():
+                    # fill up top ten dict with first 10 word frequencies
+                    if len(tops) < 10:
+                        tops[wrd] = tf
+                    else:
+                        # now, check each word to see if it should bump out one of top ten
+                        newtop: dict = {}
+                        for topw, toptf in tops.items():
+                            if tf > toptf:
+                                newtop[wrd] = tf
+                            else:
+                                newtop[topw] = toptf
+                        # the 'working' top ten becomes the official one
+                        tops = newtop
+        print("    calc_tf Top Ten list of words and term frequencies:")
+        for topw, topnum in zip(tops.items(), range(10)):
+            print(" %d. term %s had a term frequency of %.2f" % (topnum, topw[0], topw[1]))
+        print(" ")
+
     def do_fq(sent):
         """
-        calculates dict of key:word, value:word count from text of tweet
+        calculates dict of key:word, value:occurrences for each Tweet
         :param sent: text of tweet
         :return: dict with word : word count
         """
@@ -41,36 +70,41 @@ def calc_tf(sentlst, word_tokens: bool=False, calctyp: str="UNIQ", debug: bool=F
             wrds: list = sent
         for w in wrds:
             if w.isalpha():
-                if not w.isupper():
-                    w = w.lower()
+                w = w.lower()
             if w in freq_table:
                 freq_table[w] += 1
             else:
                 freq_table[w] = 1
         return freq_table
 
-    fq_dct: dict = {}
-    tf_table: dict = {}
+    tf_table: list = []
     tw_tot = len(sentlst)
-    if debug:
-        print("calc_tf creating term frequency for %d Tweets:" %tw_tot)
+    tf_low: int = 0
+    print("calc_tf creating term frequency for words in %d Tweets:" % tw_tot)
+    if calctyp == "UNIQ":
+        print("    using ratio of target to Unique words for term frequency")
+    elif calctyp == "TOP":
+        print("    using ratio of target to most frequent (Top) word for term frequency")
+    elif calctyp == "COUNT":
+        print("    using ratio of target to total words in tweet for term frequency")
+    else:
+        print("calc_tf did not receive valid calctyp for term frequency- exiting...")
+        return None
+
     for x in range(tw_tot):
         if word_tokens:
             fq_dct = do_fq(sentlst[x])
-            if debug:
-                if len(fq_dct) < 2:
-                    print("calc_tf %d got %d distinct word tokens" % (x, len(fq_dct)))
         else:
             if isinstance(sentlst[x], dict):
                 tfdoc: str = sentlst[x]['text']
             elif isinstance(sentlst[x], list):
                 tfdoc: str = " ".join([w for w in sentlst[x]])
             else:
+                # assume list is 'sentence tokenized' aka a list of strings
                 tfdoc: str = sentlst[x]
             fq_dct = do_fq(tfdoc)
-            if debug:
-                if len(fq_dct) < 2:
-                    print("calc_tf %d got %d distinct words" %(x,len(fq_dct)))
+        if len(fq_dct) < 2:
+            tf_low += 1
 
         if fq_dct:
             if calctyp == "UNIQ":
@@ -80,18 +114,20 @@ def calc_tf(sentlst, word_tokens: bool=False, calctyp: str="UNIQ", debug: bool=F
             elif calctyp == "COUNT":
                 denom: int = sum(fq_dct.values())
             else:
-                print("calc_tf did not receive a Valid calctyp parameter!: %s" %calctyp)
+                print("calc_tf did not receive a Valid calctyp parameter!: %s" % calctyp)
                 break
 
             tf_tmp: dict = {}
             for word, count in fq_dct.items():
-                if calctyp == "UNIQ":
-                    tf_tmp[word] = 1 / denom
-                else:
-                    tf_tmp[word] = count / denom
+                tf_tmp[word] = count / denom
         else:
-            tf_tmp: dict = {"":0}
-        tf_table[x] = tf_tmp
+            continue
+
+        print("    %d words being added for tweet to tf_table" % len(tf_tmp))
+        tf_table.append(tf_tmp)
+
+    print("    calc_tf has %d tweets with 0 or 1 tokens" % tf_low)
+    print("    calc_tf is returning %d rows in tf_table" % len(tf_table))
 
     return tf_table
 
@@ -101,16 +137,16 @@ def count_tweets_for_word(word_tf: dict):
     :param word_tf:
     :return: OrderedDict descending order of key=word : value=count Tweets where word appears
     """
-    docs_per_word = {}
+    tweets_per_word = {}
     for sent, tf in word_tf.items():
         for word in tf:
-            if word in docs_per_word:
-                docs_per_word[word] += 1
+            if word in tweets_per_word:
+                tweets_per_word[word] += 1
             else:
-                docs_per_word[word] = 1
+                tweets_per_word[word] = 1
 
-    w_descend: list = sorted(docs_per_word, key=lambda x: docs_per_word.get(x), reverse=True)
-    w_docs: OrderedDict = {k: docs_per_word[k] for k in w_descend}
+    w_descend: list = sorted(tweets_per_word, key=lambda x: tweets_per_word.get(x), reverse=True)
+    w_docs: OrderedDict = OrderedDict([(k, tweets_per_word[k]) for k in w_descend])
 
     return w_docs
 
@@ -200,26 +236,53 @@ def do_tfidf_stops(tf_dct: dict):
             tfi_stops.append(k)
     return tfi_stops
 
-def get_combined_toplist(qrrlst, favelst: list, sntlst: list, debug: bool=False):
+def get_combined_toplist(qrrlst: list, favelst: list, sntlst: list, debug: bool=False):
     """
     use results of get_pctle_qrr and get_pctle_fave to create combined 'top' tweet list.
-    adds the key 'type' to dict for each tweet, to indicate if this tweet had a top
-    f=fave, q=qrr count, and/or s=sentiment score.
-    this function allows selective plotting of tweets which had a disproportionate
-    impact on a topic during a particular period.
+    adds key of 'type' to tweet dict, 7 values: 'q', 'f', 's', 'qf', 'qs', 'fs', 'qfs'
+    indicates top score for f=fave, q=qrr count, s=sentiment score.
+    for selective plotting of tweets which had high influence in topic threads during dates
+
     :param sntlst: list of dict of high sentiment Tweets
     :param qrrlst: list of dict of high qrr count Tweets
     :param favelst: list of dict of high fave count Tweets
     :param debug: bool whether to print debugging information
     :return: list of dict for combined top tweet list
     """
+    def count_types(t_l: list):
+        """
+        inner function to count types of records making up combined toplist
+        """
+        topbins: dict = {'q': 0, 'f': 0, 's': 0, 'qf': 0, 'qs': 0, 'fs': 0, 'qfs': 0}
+        for x in t_l:
+            if x['type'] == 'qfs':
+                topbins['qfs'] += 1
+            elif x['type'] == 'qf':
+                topbins['qf'] += 1
+            elif x['type'] == 'qs':
+                topbins['qs'] += 1
+            elif x['type'] == 'fs':
+                topbins['fs'] += 1
+            elif x['type'] == 'q':
+                topbins['q'] += 1
+            elif x['type'] == 'f':
+                topbins['f'] += 1
+            else:
+                topbins['s'] += 1
+
+        print("    toplist Tweets by type (QRR, Favorite, and/or Sentiment:")
+        print(topbins.items())
+        print("")
+        return
+
     toplen: int = len(qrrlst)
-    tops_lst: list = []
-    tops_lst.extend(qrrlst)
-    sentids: list = sorted(k['id'] for k in sntlst)
-    faveids: list = sorted(k['id'] for k in favelst)
-    qrrids: list  = sorted(k['id'] for k in qrrlst)
-    print("\nget_combined_toplist: list by qrr and favorite counts + sentiment score")
+    tops_lst: list = qrrlst.copy()
+
+    sentids: set = set(sorted(k['id'] for k in sntlst))
+    faveids: set = set(sorted(k['id'] for k in favelst))
+    qrrids: list = sorted(k['id'] for k in qrrlst)
+
+    print("\nget_combined_toplist: combining high Qrr, Favorite and Sentiment")
 
     for x in tops_lst:
         if x['id'] in faveids:
@@ -244,9 +307,9 @@ def get_combined_toplist(qrrlst, favelst: list, sntlst: list, debug: bool=False)
             tops_lst.append(x)
 
     tops_lst = sorted(tops_lst, key=lambda x: x.get('date'), reverse=False)
-    print("    get_combined_toplist started with %d Tweets" %toplen)
-    toplen = len(tops_lst)
-    print("        final list has %d tweets\n" %toplen)
+    print("    toplist started with %d Tweets" %toplen)
+    print("        final list has %d tweets\n" %len(tops_lst))
+    count_types(tops_lst)
 
     return tops_lst
 
@@ -309,19 +372,82 @@ def get_top_tags(twlst):
 
         return hashlst, mentionlst
 
-def cleanup_for_cloud(twl: list):
-    tmplst: list = []
-    for el in twl:
-        if isinstance(el, list):
-            eltmp: list = []
-            for wrd in el:
-                if len(wrd) < 3:
+def scrub_cloud(twl: list):
+    """
+    scrub_text can perform numerous text removal or modification tasks on tweets,
+    there is tweet-specific content handled here which can be optionally commented out
+    if resulting corpus loses too much detail for downstream tasks like sentiment analysis
+
+    :param tweetxt: str from text field of tweet
+    :return: list of words OR str of words if rtn_list= False
+    """
+    from tweet_data_dict import GS_CONTRACT, GS_UCS2, JUNC_PUNC, PUNC_STR
+    import re
+    tmpl: list = []
+    for tweetxt in twl:
+        if isinstance(tweetxt, str):
+            # remove newlines in tweets, they cause a mess with many tasks
+            tweetxt = tweetxt.replace("\n", " ")
+            # remove standalone period, no need in a tweet
+            tweetxt = re.sub("\.", " ", tweetxt)
+            # expand contractions using custom dict of contractions
+            for k, v in GS_CONTRACT.items():
+                tweetxt = re.sub(k, v, tweetxt)
+            # convert ucs-2 chars appearing in english tweets
+            for k, v in GS_UCS2.items():
+                tweetxt = re.sub(k, v, tweetxt)
+            # parsing tweet punc: don't want to lose sentiment or emotion
+            tweetxt = re.sub(JUNC_PUNC, "", tweetxt)
+            # remove spurious symbols
+            for p in PUNC_STR:
+                tweetxt = tweetxt.strip(p)
+            splitstr = tweetxt.split()
+            cleanstr: str = ""
+            for w in splitstr:
+                if len(w) < 2:
                     continue
-                else:
-                    if str(wrd).isalpha():
-                        if str(wrd).isupper():
-                            wrd: str = str(wrd).lower()
-                            eltmp.append(wrd)
-            if len(eltmp) > 1:
-                tmplst.append(eltmp)
-    return tmplst
+                # lower case all alpha words
+                if str(w).isalpha():
+                    w: str = str(w).lower()
+                    cleanstr = cleanstr + " " + w
+            # remove leading or trailing whitespace:
+            tweetxt = cleanstr.strip()
+
+            # parameter "utf-8" escapes ucs-2 (\uxxxx), "ascii" removes multi-byte
+            binstr = tweetxt.encode("ascii", "ignore")
+            tweetxt = binstr.decode()
+
+        tmpl.append(tweetxt)
+
+    return tmpl
+
+def get_attib_distribution(df: pd.DataFrame):
+    """
+    Fx to look at statistical distribution of various metrics like Tweet sentiment.
+    most of these metrics will be passed from columns in pandas DataFrames.
+        id_vars: Any = None,    columns to use as identifiers
+         value_vars: Any = None,  Column(s) to unpivot - the values to plot
+         var_name: Any = None,  defaults to 'variable'
+         value_name: Any = 'value', name of column which contains all values
+         ignore_index: Any = True
+    :param df: pandas DataFrame slice
+    :return:
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    tmpdf: pd.DataFrame = df.loc[df.sent.notna(), ['neg', 'pos', 'compound']]
+
+    dfmelt = tmpdf.melt(value_vars=['neg', 'pos', 'compound'],
+                     var_name='vader_type', ignore_index=True)
+    fg = sns.FacetGrid(dfmelt, col='vader_type', margin_titles=True)
+    figplt = fg.map(sns.distplot, 'value')
+    figplt = fg.map(plt.plot, 'vader_type', 'value')
+
+    fighist = tmpdf.hist(figsize=(16, 20), bins=100, xlabelsize=8, ylabelsize=8)
+
+    plt.figure(figsize=(8, 8), facecolor=None)
+    plt.imshow()
+    plt.show()
+
+    return

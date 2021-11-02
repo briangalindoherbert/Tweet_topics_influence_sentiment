@@ -7,15 +7,19 @@ and analysis like word cloud and tf/idf.
 """
 
 import json
+import os.path
 from os import listdir
 from os.path import isfile, join
 import re
 from collections import OrderedDict
+from numpy.random import randint
 import datetime as dt
+import pandas as pd
 from nltk.tokenize import TweetTokenizer, PunktSentenceTokenizer
 from tweet_data_dict import TWEETSDIR, OUTDIR, GS_HASH, GS_URL, GS_MENT, GS_CONTRACT, \
-    GS_PAREN, XTRA_PUNC, JUNC_PUNC, GS_UCS2, PUNC_STR, GS_STOP, STOP_ADD
+    GS_PAREN, XTRA_PUNC, JUNC_PUNC, GS_UCS2, PUNC_STR, GS_STOP, STOP_ADD, PRNF
 from gs_tweet_analysis import get_word_freq
+from gs_Plot_Tweets import rscale_col
 
 def get_file_list(jsondir: str=TWEETSDIR):
     """
@@ -117,28 +121,36 @@ def save_recs(recs: list, fnames: str = "tweetarchive"):
         batchfile = txt_stmp + "_" + size + "_" + batchdate.strftime('%Y-%m-%d') + ".json"
         tw_savef = OUTDIR + batchfile
         if isinstance(recs[0], dict):
+            tmpsave: list = []
             for tw in recs:
-                tw['datetime']: str = dt.datetime.strftime(tw['datetime'], "%Y-%m-%d %H:%M")
-        save_tojson(recs, tw_savef)
-        print("gs_nlp_util.save_recs:  %s tweets saved to %s \n" % (size, batchfile))
-        return 0
+                # write the datetime64 timestamp as a string for archiving
+                if type(tw['sent']) in [dt.datetime, dt.date]:
+                    tw['sent']: str = dt.datetime.strftime(tw['sent'], "%Y-%m-%d %H:%M")
+
+                tmpsave.append(tw)
+            save_tojson(tmpsave, tw_savef)
+            print("gs_nlp_util.save_recs:  %s tweets saved to %s \n" % (size, batchfile))
+            return 0
+        else:
+            print("\n save_recs expected a list of dict to be passed \n")
+            return 1
     else:
         # if we don't have at least 100 tweets to save, something's wrong
         print("\n save_recs thinks recs is too small! \n")
         return 1
 
-def get_date(twcreated, option: str = 'S'):
+def get_date(twcreated, option: str='S'):
     """
     returns a date object from tweet 'created_at' string passed to the function
     :param twcreated: str timestamp indicating when tweet was posted
     return: dt.datetime object for option="DT" or str if option='S'
     """
     if str(twcreated[0:4]).isnumeric():
-        tmpdt = twcreated[0:4] + "-" + twcreated[5:7] + "-" + twcreated[8:10] +\
+        tmpdt = twcreated[0:4] + "-" + twcreated[5:7] + "-" + twcreated[8:10] +  \
                 " " + twcreated[11:16]
         twdate: dt.datetime = dt.datetime.strptime(tmpdt, '%Y-%m-%d %H:%M')
     else:
-        tmpdt = twcreated[-4:] + "-" + twcreated[4:7] + "-" + twcreated[8:10] +\
+        tmpdt = twcreated[-4:] + "-" + twcreated[4:7] + "-" + twcreated[8:10] + \
                 " " + twcreated[11:16]
         twdate: dt.datetime = dt.datetime.strptime(tmpdt, '%Y-%b-%d %H:%M')
 
@@ -199,11 +211,16 @@ def get_fields_simple(tw_obj: list, debug: bool=False):
 
             for y in range(x):
                 if rectyp == "arch":
-                    tw_dct['mentions'].append(tmp_lst[y]['screen_name'])
+                    tmpusr: str = tmp_lst[y]['screen_name']
+                    tmpusr = tmpusr.lower()
+                    if not tmpusr in tw_dct['mentions']:
+                        tw_dct['mentions'].append(tmpusr)
                 elif rectyp == "GET":
-                    if debug:
-                        print("user_ment: %s" %tmp_lst[y]['username'], end="")
-                    tw_dct['mentions'].append(tmp_lst[y]['username'])
+                    tmpusr: str = tmp_lst[y]['username']
+                    tmpusr = tmpusr.lower()
+                    if not tmpusr in tw_dct['mentions']:
+                        tw_dct['mentions'].append(tmpusr)
+
         return
 
     def do_urls(tmp_lst):
@@ -240,116 +257,82 @@ def get_fields_simple(tw_obj: list, debug: bool=False):
                 tw_dct['hashes'] = []
             for y in range(x):
                 if 'tag' in tmp_lst[y]:
-                    tw_dct['hashes'].append(tmp_lst[y]['tag'])
+                    tmp_hsh: str = tmp_lst[y]['tag']
+                    tmp_hsh = tmp_hsh.lower()
+                    if not tmp_hsh in tw_dct['hashes']:
+                        tw_dct['hashes'].append(tmp_hsh)
                 else:
-                    tw_dct['hashes'].append(tmp_lst[y]['text'])
+                    tmp_hsh: str = tmp_lst[y]['text']
+                    tmp_hsh = tmp_hsh.lower()
+                    if not tmp_hsh in tw_dct['hashes']:
+                        tw_dct['hashes'].append(tmp_hsh)
+
         return
 
     tw_list: list = []
+    tw_total = len(tw_obj)
+    if debug:
+        print("\n get_fields_simple: parsing %d tweets\u2026 " %tw_total)
     tcount: int = 0
+    #            -----  START: core parsing code for Tweet  -----
     for twmp in tw_obj:
         # for id, use either field id or id_str
-        tw_dct: dict = {
-            'text': twmp['text'],
-            'date': get_date(twmp['created_at']),
-            'sent_time': twmp['created_at'][11:16],
-            'datetime': get_date(twmp['created_at'], option="DT")
-        }
+        tw_dct: dict = {'date': get_date(twmp['created_at'], option='S'),
+                        'text': twmp['text'],
+                        'sent_time': twmp['created_at'][11:16]}
+        tw_dct['sent']: dt.datetime = get_date(twmp['created_at'], option='DT')
         if "user" in twmp:
-            # record is from full archive endpoint
             tw_dct['id'] = twmp['id_str']
             tw_dct['name'] = twmp['user']['screen_name']
-            if 'id_str' in twmp['user']:
-                tw_dct['user_id'] = twmp['user']['id_str']
+            if twmp['user'].get('id_str'):
+                tw_dct['user_id'] = twmp['user'].get('id_str')
+            if twmp.get('conversation_id'):
+                tw_dct['conv'] = twmp['conversation_id']
         else:
-            # record is from GET tweets endpoint, it provides 'id', but as a string
-            tw_dct['id'] = twmp['id']
-            tw_dct['user_id'] = twmp['author_id']
-            tw_dct['conv'] = twmp['conversation_id']
-
+            tw_dct['id'] = str(twmp['id'])
+            if twmp.get('author_id'):
+                tw_dct['user_id'] = twmp['author_id']
+        if twmp.get('context_annotations'):
+            domnainl: list = []
+            entityl: list = []
+            for cntx in twmp.get('context_annotations'):
+                if cntx.get('domain'):
+                    domnainl.append(cntx.get('domain'))
+                if cntx.get('entity'):
+                    entityl.append(cntx.get('entity'))
+            tw_dct['ctx_domain'] = domnainl
+            tw_dct['ctx_entity'] = entityl
+        if twmp.get('conversation_id'):
+            tw_dct['conv_id'] = twmp['conversation_id']
+        if twmp.get('referenced_tweets'):
+            tw_dct['ref_tweets'] = twmp.get('referenced_tweets')
+        if 'in_reply_to_user_id_str' in twmp:
+            tw_dct['reply_uid'] = twmp['in_reply_to_user_id_str']
+        if twmp.get('in_reply_to_screen_name'):
+            tw_dct['reply_unam'] = twmp['in_reply_to_screen_name']
+        if "in_reply_to_status_id_str" in twmp:
+            tw_dct['reply_to'] = str(twmp['in_reply_to_status_id_str'])
         if "retweet_count" in twmp:
-            tw_dct['qrr'] = twmp['quote_count'] + twmp['reply_count'] + \
-                            twmp['retweet_count']
-            tw_dct['fave'] = twmp['favorite_count']
+            tw_dct['qt'] = twmp['quote_count']
+            tw_dct['rt'] = twmp['retweet_count']
+            tw_dct['rp'] = twmp['reply_count']
+            tw_dct['qrr'] = twmp['quote_count'] + twmp['reply_count'] + twmp['retweet_count']
+            tw_dct['fave']: int = int(twmp['favorite_count'])
         elif "retweet_count" in twmp['public_metrics']:
+            tw_dct['qt'] = twmp['public_metrics']['quote_count']
+            tw_dct['rt'] = twmp['public_metrics']['retweet_count']
+            tw_dct['rp'] = twmp['public_metrics']['reply_count']
             tw_dct['qrr'] = twmp['public_metrics']['quote_count'] + \
                             twmp['public_metrics']['reply_count'] + \
                             twmp['public_metrics']['retweet_count']
-            tw_dct['fave'] = twmp['public_metrics']['like_count']
-        if 'entities' in twmp:
-            if 'user_mentions' in twmp['entities']:
-                tmp_lst = twmp['entities']['user_mentions']
-                do_mentions(tmp_lst, "arch")
-            elif 'mentions' in twmp['entities']:
-                tmp_lst = twmp['entities']['mentions']
-                do_mentions(tmp_lst, "GET")
-            if 'hashtags' in twmp['entities']:
-                tmp_lst = twmp['entities']['hashtags']
-                do_hashes(tmp_lst)
-            if 'urls' in twmp['entities']:
-                tmp_lst: list = twmp['entities']['urls']
-                do_urls(tmp_lst)
-
-        if 'retweeted_status' in twmp:
-            tw_dct['rt_text'] = twmp['retweeted_status']['text']
-            tw_dct['rt_id'] = twmp['retweeted_status']['id_str']
-            tw_dct['rt_qrr'] = twmp['retweeted_status']['quote_count'] + \
-                               twmp['retweeted_status']['reply_count'] + \
-                               twmp['retweeted_status']['retweet_count']
-            tw_dct['rt_fave'] = twmp['retweeted_status']['favorite_count']
-            if 'entities' in twmp['retweeted_status']:
-                if 'user_mentions' in twmp['retweeted_status']['entities']:
-                    tmp_lst: list = twmp['retweeted_status']['entities']['user_mentions']
-                    do_mentions(tmp_lst, "arch")
-                if 'urls' in twmp['retweeted_status']['entities']:
-                    tmp_lst: list = twmp['retweeted_status']['entities']['urls']
-                    do_urls(tmp_lst)
-                if 'hashtags' in twmp['retweeted_status']['entities']:
-                    tmp_lst: list = twmp['retweeted_status']['entities']['hashtags']
-                    do_hashes(tmp_lst)
-            if 'extended_tweet' in twmp['retweeted_status']:
-                tw_dct['rt_text'] = twmp['retweeted_status']['extended_tweet']['full_text']
-                tw_dct['text'] = tw_dct['rt_text']
-                if 'entities' in twmp['retweeted_status']['extended_tweet']:
-                    if 'user_mentions' in twmp['retweeted_status']['extended_tweet']['entities']:
-                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['user_mentions']
-                        do_mentions(tmp_lst, "arch")
-                    if 'urls' in twmp['retweeted_status']['extended_tweet']['entities']:
-                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['urls']
-                        do_urls(tmp_lst)
-                    if 'hashtags' in twmp['retweeted_status']['extended_tweet']['entities']:
-                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['hashtags']
-                        do_hashes(tmp_lst)
-        if 'quoted_status' in twmp:
-            tw_dct['qt_text'] = twmp['quoted_status']['text']
-            tw_dct['qt_id'] = twmp['quoted_status']['id_str']
-            tw_dct['qt_qrr'] = twmp['quoted_status']['quote_count'] +\
-                               twmp['quoted_status']['reply_count'] +\
-                               twmp['quoted_status']['retweet_count']
-            tw_dct['rt_fave'] = twmp['quoted_status']['favorite_count']
-            if 'entities' in twmp['quoted_status']:
-                if 'hashtags' in twmp['quoted_status']['entities']:
-                    tmp_lst: list = twmp['quoted_status']['entities']['hashtags']
-                    do_hashes(tmp_lst)
-                if 'urls' in twmp['quoted_status']['entities']:
-                    tmp_lst: list = twmp['quoted_status']['entities']['urls']
-                    do_urls(tmp_lst)
-                if 'user_mentions' in twmp['quoted_status']['entities']:
-                    tmp_lst = twmp['quoted_status']['entities']['user_mentions']
-                    do_mentions(tmp_lst, "arch")
-            if 'extended_tweet' in twmp['quoted_status']:
-                tw_dct['qt_text'] = twmp['quoted_status']['extended_tweet']['full_text']
-                tw_dct['text'] = tw_dct['qt_text']
-                if 'entities' in twmp['quoted_status']['extended_tweet']:
-                    if 'hashtags' in twmp['quoted_status']['extended_tweet']['entities']:
-                        tmp_lst: list = twmp['quoted_status']['extended_tweet']['entities']['hashtags']
-                        do_hashes(tmp_lst)
-                    if 'urls' in twmp['quoted_status']['extended_tweet']['entities']:
-                        tmp_lst: list = twmp['quoted_status']['extended_tweet']['entities']['urls']
-                        do_urls(tmp_lst)
-                    if 'user_mentions' in twmp['quoted_status']['entities']:
-                        tmp_lst = twmp['quoted_status']['extended_tweet']['entities']['user_mentions']
-                        do_mentions(tmp_lst, "arch")
+            tw_dct['fave']: int = int(twmp['public_metrics']['like_count'])
+        else:
+            tw_dct['qt']: int = 0
+            tw_dct['rt']: int = 0
+            tw_dct['rp']: int = 0
+            tw_dct['qrr']: int = 0
+            tw_dct['fave']: int = 0
+            print("quote-retweet-reply metrics not found in id=%s" % tw_dct['id'])
         if 'extended_tweet' in twmp:
             tw_dct['text'] = twmp['extended_tweet']['full_text']
             if 'entities' in twmp['extended_tweet']:
@@ -362,6 +345,86 @@ def get_fields_simple(tw_obj: list, debug: bool=False):
                 if 'user_mentions' in twmp['extended_tweet']['entities']:
                     tmp_lst: list = twmp['extended_tweet']['entities']['user_mentions']
                     do_mentions(tmp_lst, "arch")
+            else:
+                if 'hashtags' in twmp['entities']:
+                    tmp_lst = twmp['entities']['hashtags']
+                    do_hashes(tmp_lst)
+                if 'urls' in twmp['entities']:
+                    tmp_lst: list = twmp['entities']['urls']
+                    do_urls(tmp_lst)
+                if 'user_mentions' in twmp['entities']:
+                    tmp_lst = twmp['entities']['user_mentions']
+                    do_mentions(tmp_lst, "arch")
+                elif 'mentions' in twmp['entities']:
+                    tmp_lst = twmp['entities']['mentions']
+                    do_mentions(tmp_lst, "GET")
+        if 'retweeted_status' in twmp:
+            tw_dct['text'] = twmp['retweeted_status']['text']
+            tw_dct['rt_id'] = twmp['retweeted_status']['id_str']
+            tw_dct['rt_qrr'] = twmp['retweeted_status']['quote_count'] + \
+                               twmp['retweeted_status']['reply_count'] + \
+                               twmp['retweeted_status']['retweet_count']
+            tw_dct['rt_fave'] = twmp['retweeted_status']['favorite_count']
+            tw_dct['rt_qt'] = twmp['retweeted_status']['quote_count']
+            tw_dct['rt_rp'] = twmp['retweeted_status']['reply_count']
+            tw_dct['rt_rt'] = twmp['retweeted_status']['retweet_count']
+            if 'entities' in twmp['retweeted_status']:
+                if 'user_mentions' in twmp['retweeted_status']['entities']:
+                    tmp_lst: list = twmp['retweeted_status']['entities']['user_mentions']
+                    do_mentions(tmp_lst, "arch")
+                if 'urls' in twmp['retweeted_status']['entities']:
+                    tmp_lst: list = twmp['retweeted_status']['entities']['urls']
+                    do_urls(tmp_lst)
+                if 'hashtags' in twmp['retweeted_status']['entities']:
+                    tmp_lst: list = twmp['retweeted_status']['entities']['hashtags']
+                    do_hashes(tmp_lst)
+            if 'extended_tweet' in twmp['retweeted_status']:
+                tw_dct['text'] = twmp['retweeted_status']['extended_tweet']['full_text']
+                if 'entities' in twmp['retweeted_status']['extended_tweet']:
+                    if 'user_mentions' in twmp['retweeted_status']['extended_tweet']['entities']:
+                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['user_mentions']
+                        do_mentions(tmp_lst, "arch")
+                    if 'urls' in twmp['retweeted_status']['extended_tweet']['entities']:
+                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['urls']
+                        do_urls(tmp_lst)
+                    if 'hashtags' in twmp['retweeted_status']['extended_tweet']['entities']:
+                        tmp_lst: list = twmp['retweeted_status']['extended_tweet']['entities']['hashtags']
+                        do_hashes(tmp_lst)
+        if 'quoted_status' in twmp:
+            if 'extended_tweet' in twmp['quoted_status']:
+                tw_dct['qt_text'] = tw_dct['text']
+                tw_dct['text'] = twmp['quoted_status']['extended_tweet']['full_text']
+                if 'entities' in twmp['quoted_status']['extended_tweet']:
+                    if 'hashtags' in twmp['quoted_status']['extended_tweet']['entities']:
+                        tmp_lst: list = twmp['quoted_status']['extended_tweet']['entities']['hashtags']
+                        do_hashes(tmp_lst)
+                    if 'urls' in twmp['quoted_status']['extended_tweet']['entities']:
+                        tmp_lst: list = twmp['quoted_status']['extended_tweet']['entities']['urls']
+                        do_urls(tmp_lst)
+                    if 'user_mentions' in twmp['quoted_status']['entities']:
+                        tmp_lst = twmp['quoted_status']['extended_tweet']['entities']['user_mentions']
+                        do_mentions(tmp_lst, "arch")
+                elif 'entities' in twmp['quoted_status']:
+                    if 'hashtags' in twmp['quoted_status']['entities']:
+                        tmp_lst: list = twmp['quoted_status']['entities']['hashtags']
+                        do_hashes(tmp_lst)
+                    if 'urls' in twmp['quoted_status']['entities']:
+                        tmp_lst: list = twmp['quoted_status']['entities']['urls']
+                        do_urls(tmp_lst)
+                    if 'user_mentions' in twmp['quoted_status']['entities']:
+                        tmp_lst = twmp['quoted_status']['entities']['user_mentions']
+                        do_mentions(tmp_lst, "arch")
+            else:
+                tw_dct['qt_text'] = tw_dct['text']
+                tw_dct['text'] = twmp['quoted_status']['text']
+            tw_dct['qt_id'] = twmp['quoted_status']['id_str']
+            tw_dct['qt_qrr'] = twmp['quoted_status']['quote_count'] +\
+                               twmp['quoted_status']['reply_count'] +\
+                               twmp['quoted_status']['retweet_count']
+            tw_dct['qt_fave'] = twmp['quoted_status']['favorite_count']
+            tw_dct['qt_qt'] = twmp['quoted_status']['quote_count']
+            tw_dct['qt_rp'] = twmp['quoted_status']['reply_count']
+            tw_dct['qt_rt'] = twmp['quoted_status']['retweet_count']
 
         tw_list.append(tw_dct)
         tcount += 1
@@ -381,21 +444,107 @@ def get_batch_from_file(batchfil: str):
     f_h.close()
     return rawtext
 
+def prep_trading_data(trade_f, dcol: str = 'mktdate'):
+    """
+    reads csv file with stock market data for company.  expected layout is trading
+    date (mm/dd/yyyy), open price, daily high, daily low, closing price, volume of shares.
+    Also includes two derived elements:  daily gain(loss) and daily exchange
+    value, which is closing price * volume (shares traded).
+    TODO: use pd.options.io.excel.xlsx.reader = openpyxl, from openpyxl import ...
+    :param trade_f: csv file GME_jan_mar.csv with market trading data
+    :param dcol: optionally pass a str name of date column for incoming file
+    :return: trade_df: pd.DataFrame of trading data for company
+    """
+
+    def adj_gainloss(cval: float, cmin: float = None, cmax: float = None):
+        """
+        inner function to calc adjusted gain or loss proportional to max gain or loss
+        assumes minimum is a loss and maximum is a gain
+            (for short periods this may not be true)
+        :param cval: value of column as passed from pandas dataframe apply fx
+        :param cmin: maximum loss for column
+        :param cmax: maximum gain for column
+        :return: float value as proportional gain
+        """
+        if cmin:
+            if cval > 0:
+                tmpf: float = round(cval / cmax, ndigits=2)
+            elif cval < 0:
+                tmpf: float = round(cval / cmin, ndigits=2)
+            else:
+                tmpf: float = 0.0
+        else:
+            tmpf: float = round(cval / cmax, ndigits=2)
+
+        return tmpf
+
+    t_df = pd.read_csv(trade_f, parse_dates=True, dtype={'close': float})
+    pd.options.display.float_format = '{:.2f}'.format
+    print("    ---- Reading public event data ----")
+    print("prep_trade_data read %d records from disk..." % len(t_df))
+
+    if dcol in t_df.columns:
+        dcolnum: int = t_df.columns.get_loc(dcol)
+        if not isinstance(t_df.iat[0, dcolnum], (dt.date, dt.datetime)):
+            t_df[dcol] = t_df[dcol].apply(lambda x: dt.date.strftime(x, "%Y-%m-%d"))
+            t_df[dcol].astype(dt.date, copy=False, errors='ignore')
+            t_df.sort_values(by=[dcol])
+            t_df.reset_index(drop=True, inplace=True)
+
+    gmax: float = t_df['gain'].max()
+    gmin: float = t_df['gain'].min()
+    t_df['gain_adj'] = t_df['gain'].apply(lambda x: adj_gainloss(x, gmin, gmax))
+    vlmax: float = t_df['volume'].max()
+    t_df['vol_ratio'] = t_df['volume'].apply(lambda x: adj_gainloss(x, cmax=vlmax))
+    t_df = rscale_col(t_df, 'value')
+    t_df = rscale_col(t_df, 'volume')
+
+    dt_str: str = dt.datetime.strftime(t_df.iat[0, dcolnum], "%Y-%m-%d")
+    print("    first event on %s" % dt_str)
+    twlen = len(t_df)
+    dt.datetime.strftime(t_df.iat[twlen - 1, dcolnum], "%Y-%m-%d")
+    print("    last event on %s\n" % dt_str)
+
+    return t_df
+
+def prep_public_data(events_f):
+    """
+    converted from function that reads stock market data, this function prepares public
+    event data which is to be plotted alongside tweet data. output should be a date, a
+    magnitude of importance, and description of event
+    :param events_f: fq filename for csv file with public events
+    :return: event_df: pd.DataFrame of major public events for the topic
+    """
+
+    trade_df = pd.read_csv(events_f, parse_dates=True)
+    trade_df['date'] = trade_df['date'].apply(lambda x: dt.datetime.strptime(x, "%Y-%m-%d %H:%M"))
+    trade_df['date'].astype('datetime64', copy=False, errors='ignore')
+    trade_df.sort_values(by=['date'])
+    trade_df.reset_index(drop=True, inplace=True)
+
+    print("    ---- Reading public event data ----")
+    print("    first event on %s" % dt.datetime.strftime(trade_df.iat[0, 0], "%Y-%m-%d"))
+    twlen = len(trade_df)
+    print("    last event on %s\n" % dt.datetime.strftime(trade_df.iat[twlen - 1, 0], "%Y-%m-%d"))
+
+    return trade_df
+
 def scrub_text(tweetxt: str):
     """
-    scrub_text can perform numerous removal or modification tasks specific to tweet nlp,
+    scrub_text can perform numerous text removal or modification tasks on tweets,
     there is tweet-specific content handled here which can be optionally commented out
-    if resulting corpus loses too much detail for tfidf, sentiment, or other tasks.
+    if resulting corpus loses too much detail for downstream tasks like sentiment analysis
 
     :param tweetxt: str from text field of tweet
     :return: list of words OR str of words if rtn_list= False
     """
     if isinstance(tweetxt, str):
-        # remove newlines in tweets, they cause a mess with nlp!
+        # remove newlines in tweets, they cause a mess with many tasks
         tweetxt: str = tweetxt.replace("\n", " ")
         splitstr = tweetxt.split()
         cleanstr: str = ""
         for w in splitstr:
+            # if not an intentional all caps word, then lower case it
             if str(w).isalpha():
                 if not str(w).isupper():
                     w = str(w).lower()
@@ -404,43 +553,44 @@ def scrub_text(tweetxt: str):
         tweetxt = re.sub(GS_URL, "", cleanstr)
         tweetxt = re.sub(GS_MENT, "\g<1>", tweetxt)
         tweetxt = re.sub(GS_HASH, "\g<1>", tweetxt)
-        # remove periods, no need for sentence demarcation in tweets!
+        # remove standalone period, no need for sentence demarcation in a tweet
         tweetxt = re.sub("\.", " ", tweetxt)
-        # expand contractions using dict of common contractions
+        # expand contractions using custom dict of contractions
         for k, v in GS_CONTRACT.items():
             tweetxt = re.sub(k, v, tweetxt)
         # often ucs-2 chars appear in english tweets, can simply convert some
         for k, v in GS_UCS2.items():
             tweetxt = re.sub(k, v, tweetxt)
-        # parsing tweet punc is tricky- can show sentiment or be part of smiley
+        # parsing tweet punc: don't want to lose sentiment or emotion
         tweetxt = re.sub(JUNC_PUNC, "", tweetxt)
         # remove spurious symbols
         for p in PUNC_STR:
             tweetxt = tweetxt.strip(p)
-        # remove any leading or trailing whitespace:
+        # remove leading or trailing whitespace:
         tweetxt = tweetxt.strip()
         tweetxt = re.sub(XTRA_PUNC, " \g<1>", tweetxt)
-
-        # encode-decode for ucs-2 chars: "utf-8" escapes (\uxxxx), "ascii" removes
+        # encode-decode cycle can strip multi-byte chars if desired:
+        # parameter "utf-8" escapes ucs-2 (\uxxxx), and "ascii" removes
         # binstr = cleanstr.encode("ascii", "ignore")
         # cleanstr = binstr.decode()
-        # next 3 lines can remove words less than a given length, but removes emojis :-(
+        # lines below remove words less than given length, but will strip emojis too :-(
         # wrd_toks: list = cleanstr.split(" ")
         # wrd_toks = [x for x in wrd_toks if len(x) >= 3]
         # cleanstr: str = ' '.join([str(x) for x in wrd_toks])
+
         return tweetxt
 
 def clean_text(tw_batch: list):
     """
-    just a stub to iterate list of tweets and call do_tweet_scrub or other workers that
-    do the wrangling work.
+    stub which iterates over list of tweets and calls do_tweet_scrub or other workers that
+    do the wrangling.
     :param tw_batch: list containing batch of tweets
     :return: dict with primary text now containing full text of tweet
     """
     fixed: list = []
     for atweet in tw_batch:
         if isinstance(atweet, dict):
-            # EXPECTED course - if sending twrecs to this function!
+            # EXPECTED course - send list of dict (each tweet record)
             if atweet.get('text'):
                 atweet['text'] = scrub_text(atweet['text'])
                 fixed.append(atweet)
@@ -463,20 +613,21 @@ def clean_text(tw_batch: list):
 
 def remove_replace_text(twlst: list, stop1: list=GS_STOP, stop2: list=None, debug: bool=False):
     """
-    final pre-processing b/f word tokenize, input can be lists of list, str or dict
-    fixes text in parens, converts to lower if word not all caps, and removes STOPs.
+    final pre-processing b/f tokenizing, input can be a list of ...[list, str or dict]
+    fixes text in parens, converts to lower if word not all caps,
+    STOP word list removal: default=GS_STOP, but can pass 1or2 custom STOP lists
 
-    :param twlst: list of tweets
-    :param stop1: default is stop list from tweet_data_dict
-    :param stop2: list a secondary list of stop words if needed
-    :param debug: bool, some verbose printing to assist debugging
+    :param twlst: list of tweets (can be list of ...dict/str/list)
+    :param stop1: defaults to GS_STOP from data dict, list of words to remove from tweets
+    :param stop2: optional second list of stop words
+    :param debug: bool flag to turn on verbose printing for debugging
     :return: list of scrubbed tweets
     """
     def do_paras(twstr: str) -> str:
         """
-        inner function to remove parentheses and move paren text to end of sentence
+        inner function removes parentheses and moves text in parens to end of tweet
         :param twstr: str text of a single tweet
-        :return: str modifies input to fx
+        :return: modified input str
         """
         parafound = re_paren.search(twstr)
         if parafound:
@@ -487,9 +638,9 @@ def remove_replace_text(twlst: list, stop1: list=GS_STOP, stop2: list=None, debu
 
     def do_lcase_stops(twstr: str) -> str:
         """
-        'inner' Fx: unless tweet words is allcaps, lowercase it and remove stoplist words
+        inner Fx- unless input string is allcaps, lowercase it and run against stoplist
         :param twstr: str with text of one tweet
-        :return: text of Tweet w  ith case corrected and stopwords removed
+        :return: text of Tweet with case corrected and stopwords removed
         """
         tw_wrds = twstr.split()
         tmplst: list = []
@@ -503,7 +654,7 @@ def remove_replace_text(twlst: list, stop1: list=GS_STOP, stop2: list=None, debu
                 continue
             if debug:
                 if not w.isalnum():
-                    print("%s   not alpha-numeric" %w)
+                    print("%s   not alpha-numeric" % w)
             tmplst.append(w)
         twstr = " ".join([x for x in tmplst])
         return twstr
@@ -599,7 +750,7 @@ def do_stops(twlst: list, stop1: list = GS_STOP, stop2: list = STOP_ADD):
     """
     clean_list: list = []
     for twis in twlst:
-        if isinstance(twis, list):                  # word-tokenized
+        if isinstance(twis, list):
             tmp_wrds: list = [cw for cw in twis if cw not in stop1]
             if stop2 is not None:
                 clean_list.append([cw for cw in tmp_wrds if cw not in stop2])
@@ -643,7 +794,13 @@ def do_start_stops(twent):
 
 def get_dates_in_batch(tws):
     """
-    for a list of tweets, capture dates included and count for each day
+    for a list of tweets, capture dates and then aggregate by the hour when the tweet
+    was sent.
+    With these buckets, this Fx then prints on the console a list by data and by hour of
+    how many tweets are in the dataset.  This Fx helps give you an at-a-glance idea
+    of where the holes are when trying to fill tweet coverage for a date range like a
+    particular business week
+
     :param tws: list of tweets, assume the list created by sentence tokenization
     :return:
     """
@@ -653,6 +810,7 @@ def get_dates_in_batch(tws):
             if a_tw.get('date'):
                 tw_d = dt.datetime.strptime(a_tw['date'], '%Y-%m-%d')
                 if tw_d in tw_days:
+                    # we already have at least one TW for this day, lets add to count
                     if a_tw.get('sent_time'):
                         tmp_hr = str(a_tw['sent_time'][0:2])
                         if tmp_hr in tw_days[tw_d]:
@@ -665,9 +823,14 @@ def get_dates_in_batch(tws):
                         else:
                             tw_days[tw_d]['unk'] = 1
                 else:
+                    # the first TW so far for this date, build the bucket
                     tw_days[tw_d] = {}
                     if a_tw.get('sent_time'):
                         tw_days[tw_d][str(a_tw['sent_time'][0:2])] = 1
+        elif isinstance(a_tw, list):
+            print("haven't built out logic yet to show date distribution with list of list")
+            print("get_dates_in_batch only handles list of dict right now")
+            return None
 
     # sorting prior to printing
     tw_days: OrderedDict = OrderedDict([(k, tw_days[k]) for k in sorted(tw_days.keys())])
@@ -675,7 +838,7 @@ def get_dates_in_batch(tws):
     print("Tweets per 1-hr block for each day (24hr clock)")
     for d, dh in tw_days.items():
         seq_d += 1
-        print("Day %2d, Date: %10s" % (seq_d, dt.datetime.strftime(d, '%Y-%m-%d')))
+        print("Day %2d, Date: %10s" % (seq_d, dt.date.strftime(d, '%Y-%m-%d')))
         dh = {k: dh[k] for k in sorted(dh.keys())}
         tw_days[d] = dh
         for hh, cnt in dh.items():
@@ -727,6 +890,43 @@ def print_missing_for_postman(msng: list):
     """
     newtmp: list = []
     for miss in msng:
-        if miss.get('rtid'):
-            newtmp.append(miss.get('rtid'))
+        if miss.get('rt_id'):
+            newtmp.append(miss.get('rt_id'))
+
+    dt_str: str = dt.datetime.strftime(dt.datetime.today(), "%Y_%m_%d")
+    savefil = os.path.join(OUTDIR, "missing_" + dt_str + ".txt")
+    fh_j = open(savefil, mode='a+', encoding='utf-8', newline='\n')
+    fh_j.writelines(",".join(x for x in newtmp))
+    fh_j.close()
+
     return newtmp
+
+def simulate_within_range(twl: list, dayst:list=None, copies: int=1):
+    """
+    create mock-up data based on actuals within a date range
+    can be write the output to a json file?
+    :param twl: list of dict of tweets
+    :param dayst: list with days for range in Y-m-d format
+    :return: list of dict of pseudo-data
+    """
+    tmpl: list = []
+    for tw in twl:
+        if isinstance(tw, dict):
+            if tw['date'] in dayst:
+                tmpl.append(tw)
+
+    for tw in tmpl:
+        for x in range(copies):
+            hrs = randint(0, 24)
+            mins = randint(0, 60)
+            if hrs < 10:
+                hrs = "0" + str(hrs)
+            else:
+                hrs = str(hrs)
+            if mins < 10:
+                mins = "0" + str(mins)
+            else:
+                mins = str(mins)
+
+
+    return tmpl
